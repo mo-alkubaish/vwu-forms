@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form, Depends
+from fastapi import FastAPI, Form, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
@@ -292,7 +292,13 @@ async def submit_form(
     }
 
 @app.get("/registrations", response_model=RegistrationsList)
-async def get_registrations(session: Session = Depends(get_session)):
+async def get_registrations(
+    session: Session = Depends(get_session),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    required_key = os.getenv("API_KEY", "changeme")
+    if x_api_key != required_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     registrations = session.exec(select(RegistrationForm)).all()
     return {"registrations": [reg for reg in registrations]}
 
