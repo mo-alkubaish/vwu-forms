@@ -140,7 +140,13 @@ def _create_database_if_missing(url_str: str) -> None:
     if not target_db:
         return
 
-    admin_url = url.set(database="postgres")
+    # Allow skipping DB creation (useful when the user lacks CREATEDB)
+    if os.getenv("DB_SKIP_CREATE", "").lower() in {"1", "true", "yes"}:
+        return
+
+    # Optional separate admin URL (e.g., superuser) for creating the DB
+    admin_url_env = os.getenv("DB_ADMIN_URL")
+    admin_url = make_url(admin_url_env) if admin_url_env else url.set(database="postgres")
     admin_engine = create_engine(str(admin_url), isolation_level="AUTOCOMMIT")
     with admin_engine.connect() as conn:
         exists = conn.execute(
@@ -151,6 +157,16 @@ def _create_database_if_missing(url_str: str) -> None:
             safe_name = target_db.replace('"', '""')
             conn.execute(text(f'CREATE DATABASE "{safe_name}"'))
             print(f"Created database '{target_db}'.")
+
+
+def _is_auth_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return "password authentication failed" in msg or "authentication failed" in msg
+
+
+def _is_db_missing_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return "does not exist" in msg and "database" in msg
 
 
 def wait_for_database(url_str: str) -> None:
@@ -169,21 +185,36 @@ def wait_for_database(url_str: str) -> None:
 
     for attempt in range(1, max_attempts + 1):
         try:
-            if is_pg:
-                # Ensure server is up and DB exists
-                _create_database_if_missing(url_str)
-
-            # Verify we can connect to the target DB
+            # First, try to connect to the target DB directly
             test_engine = create_engine(url_str)
             with test_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             print("Database is ready.")
             return
         except OperationalError as e:
-            last_err = e
-            print(
-                f"Waiting for database ({attempt}/{max_attempts}) at {_mask_url(url_str)}: {e}"
-            )
+            # Decide whether to attempt DB creation or fail fast
+            if _is_auth_error(e):
+                raise RuntimeError(
+                    "Authentication failed for the provided DATABASE_URL. "
+                    f"Checked {_mask_url(url_str)}. If your password contains special characters, "
+                    "URL-encode it (e.g., @ -> %40)."
+                ) from e
+
+            if is_pg and _is_db_missing_error(e):
+                try:
+                    _create_database_if_missing(url_str)
+                    # After creation, loop will retry the connection
+                except Exception as ce:
+                    last_err = ce
+                    print(
+                        f"Could not create database via admin connection: {ce}. "
+                        "Set DB_ADMIN_URL for a superuser, or set DB_SKIP_CREATE=1 if DB is created externally."
+                    )
+            else:
+                last_err = e
+                print(
+                    f"Waiting for database ({attempt}/{max_attempts}) at {_mask_url(url_str)}: {e}"
+                )
         except Exception as e:
             last_err = e
             print(
