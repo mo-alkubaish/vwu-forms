@@ -10,6 +10,9 @@ app = FastAPI(title="KFUPM Event Registration Form")
 class UserType(str, Enum):
     student = "طالب"
     employee = "موظف"
+    employee_son = "ابن موظف"
+    na = "غير مطبق"
+
 
 class AcademicLevel(str, Enum):
     freshman = "السنة الأولى"
