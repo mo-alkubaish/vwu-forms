@@ -5,7 +5,15 @@ from enum import Enum
 import uvicorn
 import os
 
-app = FastAPI(title="KFUPM Event Registration Form")
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    SQLModel.metadata.create_all(engine)
+    yield
+
+app = FastAPI(title="KFUPM Event Registration Form", lifespan=lifespan)
 
 class UserType(str, Enum):
     student = "طالب"
@@ -39,6 +47,27 @@ class RegistrationForm(SQLModel, table=True):
     academic_level: AcademicLevel = Field(description="المرحلة الدراسية")
     how_heard: HowHeard = Field(description="كيف سمع عن الملتقى")
 
+# ---------- API Schemas (Request/Response) ----------
+class RegistrationRead(SQLModel):
+    id: int
+    first_name: str
+    middle_name: str
+    last_name: str
+    university_id: Optional[str] = None
+    phone: str
+    user_type: UserType
+    academic_level: AcademicLevel
+    how_heard: HowHeard
+
+
+class RegistrationResponse(SQLModel):
+    message: str
+    data: RegistrationRead
+
+
+class RegistrationsList(SQLModel):
+    registrations: list[RegistrationRead]
+
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://forms_user:forms_password@localhost:5432/kfupm_forms")
 engine = create_engine(DATABASE_URL)
 
@@ -47,11 +76,9 @@ def get_session():
         yield session
 
 
-@app.on_event("startup")
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
 
-@app.post("/submit")
+
+@app.post("/submit", response_model=RegistrationResponse)
 async def submit_form(
     first_name: str = Form(...),
     middle_name: str = Form(...),
@@ -80,10 +107,10 @@ async def submit_form(
     
     return {
         "message": "تم التسجيل بنجاح",
-        "data": registration.dict()
+        "data": registration
     }
 
-@app.get("/registrations")
+@app.get("/registrations", response_model=RegistrationsList)
 async def get_registrations(session: Session = Depends(get_session)):
     registrations = session.exec(select(RegistrationForm)).all()
     return {"registrations": [reg.dict() for reg in registrations]}
