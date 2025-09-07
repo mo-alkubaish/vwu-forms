@@ -7,13 +7,19 @@ from typing import Optional
 from enum import Enum
 import uvicorn
 import os
+import time
 
 
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    SQLModel.metadata.create_all(engine)
+    try:
+        wait_for_database(DATABASE_URL)
+        SQLModel.metadata.create_all(engine)
+    except Exception as e:
+        print(f"ERROR: Database initialization failed. Details: {e}")
+        raise
     yield
 
 app = FastAPI(title="KFUPM Event Registration Form", lifespan=lifespan)
@@ -115,8 +121,85 @@ def ensure_database_exists(url_str: str) -> None:
         print(f"Warning: ensure_database_exists error: {e}")
 
 
-# Ensure DB exists before creating the app engine and tables
-ensure_database_exists(DATABASE_URL)
+def _mask_url(url_str: str) -> str:
+    try:
+        u = make_url(url_str)
+        if u.password:
+            u = u.set(password="***")
+        return str(u)
+    except Exception:
+        return url_str
+
+
+def _create_database_if_missing(url_str: str) -> None:
+    url = make_url(url_str)
+    if url.get_backend_name() != "postgresql":
+        return
+
+    target_db = url.database or "forms"
+    if not target_db:
+        return
+
+    admin_url = url.set(database="postgres")
+    admin_engine = create_engine(str(admin_url), isolation_level="AUTOCOMMIT")
+    with admin_engine.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": target_db},
+        ).scalar()
+        if not exists:
+            safe_name = target_db.replace('"', '""')
+            conn.execute(text(f'CREATE DATABASE "{safe_name}"'))
+            print(f"Created database '{target_db}'.")
+
+
+def wait_for_database(url_str: str) -> None:
+    """Wait for DB server readiness and ensure target DB exists.
+
+    Retries connections with backoff; attempts to create the target
+    Postgres database if it doesn't exist. Raises after max attempts
+    with a clear, masked message.
+    """
+    max_attempts = int(os.getenv("DB_MAX_RETRIES", "30"))
+    interval = float(os.getenv("DB_RETRY_INTERVAL", "2.0"))
+
+    last_err: Optional[Exception] = None
+    url = make_url(url_str)
+    is_pg = url.get_backend_name() == "postgresql"
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            if is_pg:
+                # Ensure server is up and DB exists
+                _create_database_if_missing(url_str)
+
+            # Verify we can connect to the target DB
+            test_engine = create_engine(url_str)
+            with test_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print("Database is ready.")
+            return
+        except OperationalError as e:
+            last_err = e
+            print(
+                f"Waiting for database ({attempt}/{max_attempts}) at {_mask_url(url_str)}: {e}"
+            )
+        except Exception as e:
+            last_err = e
+            print(
+                f"Waiting for database ({attempt}/{max_attempts}) at {_mask_url(url_str)}: {e}"
+            )
+
+        time.sleep(interval)
+
+    masked = _mask_url(url_str)
+    raise RuntimeError(
+        "Database not ready after retries. "
+        f"Checked {masked}. Last error: {last_err}"
+    )
+
+
+# Create engine (connections are opened lazily)
 engine = create_engine(DATABASE_URL)
 
 def get_session():
@@ -169,3 +252,4 @@ async def health():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
