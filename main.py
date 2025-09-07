@@ -67,11 +67,11 @@ class HowHeard(str, Enum):
 class RegistrationForm(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     first_name: str = Field(min_length=2)
-    middle_name: str = Field(min_length=2)
+    middle_name: Optional[str] = Field(default=None, min_length=2)
     last_name: str = Field(min_length=2)
     university_id: Optional[str] = Field(None, description="الرقم الجامعي (اختياري)")
     phone: str = Field(min_length=10, description="رقم الجوال")
-    email: EmailStr = Field(description="البريد الإلكتروني")
+    email: Optional[EmailStr] = Field(default=None, description="البريد الإلكتروني")
     user_type: UserType = Field(description="طالب أو موظف")
     academic_level: AcademicLevel = Field(description="المرحلة الدراسية")
     how_heard: HowHeard = Field(description="كيف سمع عن الملتقى")
@@ -80,11 +80,11 @@ class RegistrationForm(SQLModel, table=True):
 class RegistrationRead(SQLModel):
     id: int
     first_name: str
-    middle_name: str
+    middle_name: Optional[str] = None
     last_name: str
     university_id: Optional[str] = None
     phone: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
     user_type: UserType
     academic_level: AcademicLevel
     how_heard: HowHeard
@@ -262,11 +262,11 @@ def get_session():
 @app.post("/submit", response_model=RegistrationResponse)
 async def submit_form(
     first_name: str = Form(...),
-    middle_name: str = Form(...),
+    middle_name: Optional[str] = Form(None),
     last_name: str = Form(...),
     university_id: Optional[str] = Form(None),
     phone: str = Form(...),
-    email: EmailStr = Form(...),
+    email: Optional[EmailStr] = Form(None),
     user_type: UserType = Form(...),
     academic_level: AcademicLevel = Form(...),
     how_heard: HowHeard = Form(...),
@@ -274,11 +274,11 @@ async def submit_form(
 ):
     registration = RegistrationForm(
         first_name=first_name,
-        middle_name=middle_name,
+        middle_name=middle_name or None,
         last_name=last_name,
         university_id=university_id or None,
         phone=phone,
-        email=email,
+        email=email or None,
         user_type=user_type,
         academic_level=academic_level,
         how_heard=how_heard
