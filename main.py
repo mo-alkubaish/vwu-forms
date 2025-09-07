@@ -69,6 +69,12 @@ class RegistrationsList(SQLModel):
     registrations: list[RegistrationRead]
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://forms_user:forms_password@localhost:5432/kfupm_forms")
+
+# Normalize deprecated Postgres scheme used by some providers (e.g., Heroku)
+# SQLAlchemy 2.x requires 'postgresql://' instead of 'postgres://'
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 engine = create_engine(DATABASE_URL)
 
 def get_session():
@@ -113,7 +119,11 @@ async def submit_form(
 @app.get("/registrations", response_model=RegistrationsList)
 async def get_registrations(session: Session = Depends(get_session)):
     registrations = session.exec(select(RegistrationForm)).all()
-    return {"registrations": [reg.dict() for reg in registrations]}
+    return {"registrations": [reg for reg in registrations]}
+
+@app.get("/health", status_code=200)
+async def health():
+    return {"status": "OK"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
