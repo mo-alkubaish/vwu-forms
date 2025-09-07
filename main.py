@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Form, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import OperationalError
 from typing import Optional
 from enum import Enum
+from pydantic import EmailStr
 import uvicorn
 import os
 import time
@@ -23,6 +25,23 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="KFUPM Event Registration Form", lifespan=lifespan)
+
+# Configure CORS
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+if cors_origins_env.strip() == "*":
+    _allow_origins = ["*"]
+    _allow_credentials = False  # credentials not allowed with wildcard origins per spec
+else:
+    _allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    _allow_credentials = True
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class UserType(str, Enum):
     student = "طالب"
@@ -52,6 +71,7 @@ class RegistrationForm(SQLModel, table=True):
     last_name: str = Field(min_length=2)
     university_id: Optional[str] = Field(None, description="الرقم الجامعي (اختياري)")
     phone: str = Field(min_length=10, description="رقم الجوال")
+    email: EmailStr = Field(description="البريد الإلكتروني")
     user_type: UserType = Field(description="طالب أو موظف")
     academic_level: AcademicLevel = Field(description="المرحلة الدراسية")
     how_heard: HowHeard = Field(description="كيف سمع عن الملتقى")
@@ -64,15 +84,14 @@ class RegistrationRead(SQLModel):
     last_name: str
     university_id: Optional[str] = None
     phone: str
+    email: EmailStr
     user_type: UserType
     academic_level: AcademicLevel
     how_heard: HowHeard
 
-
 class RegistrationResponse(SQLModel):
     message: str
     data: RegistrationRead
-
 
 class RegistrationsList(SQLModel):
     registrations: list[RegistrationRead]
@@ -247,6 +266,7 @@ async def submit_form(
     last_name: str = Form(...),
     university_id: Optional[str] = Form(None),
     phone: str = Form(...),
+    email: EmailStr = Form(...),
     user_type: UserType = Form(...),
     academic_level: AcademicLevel = Form(...),
     how_heard: HowHeard = Form(...),
@@ -258,15 +278,14 @@ async def submit_form(
         last_name=last_name,
         university_id=university_id or None,
         phone=phone,
+        email=email,
         user_type=user_type,
         academic_level=academic_level,
         how_heard=how_heard
     )
-    
     session.add(registration)
     session.commit()
     session.refresh(registration)
-    
     return {
         "message": "تم التسجيل بنجاح",
         "data": registration
