@@ -90,7 +90,7 @@ def ensure_database_exists(url_str: str) -> None:
         if url.get_backend_name() != "postgresql":
             return  # Only handle Postgres automatically
 
-        target_db = url.database or ""
+        target_db = url.database or "forms"
         if not target_db:
             return
 
