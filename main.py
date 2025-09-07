@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Form, Depends
 from sqlmodel import SQLModel, Field, create_engine, Session, select
+from sqlalchemy import text
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import OperationalError
 from typing import Optional
 from enum import Enum
 import uvicorn
@@ -75,6 +78,45 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://forms_user:forms_password
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+
+def ensure_database_exists(url_str: str) -> None:
+    """Ensure the target Postgres database exists; create if missing.
+
+    Connects to the server's default 'postgres' database using the same
+    credentials/host, checks pg_database, and creates the target DB if absent.
+    """
+    try:
+        url = make_url(url_str)
+        if url.get_backend_name() != "postgresql":
+            return  # Only handle Postgres automatically
+
+        target_db = url.database or ""
+        if not target_db:
+            return
+
+        admin_url = url.set(database="postgres")
+
+        # AUTOCOMMIT is required for CREATE DATABASE in Postgres
+        admin_engine = create_engine(str(admin_url), isolation_level="AUTOCOMMIT")
+        with admin_engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": target_db},
+            ).scalar() 
+            if not exists:
+                safe_name = target_db.replace('"', '""')
+                conn.execute(text(f'CREATE DATABASE "{safe_name}"'))
+                print(f"Created database '{target_db}'.")
+    except OperationalError as e:
+        # Likely the server isn't reachable or creds lack CREATEDB privilege
+        print(f"Warning: could not verify/create database '{url_str}': {e}")
+    except Exception as e:
+        # Non-fatal; app may still start if DB gets created externally
+        print(f"Warning: ensure_database_exists error: {e}")
+
+
+# Ensure DB exists before creating the app engine and tables
+ensure_database_exists(DATABASE_URL)
 engine = create_engine(DATABASE_URL)
 
 def get_session():
