@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Form, Depends, Header, HTTPException
+from fastapi import FastAPI, Form, Depends, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
 from sqlalchemy.engine.url import make_url
@@ -10,6 +11,7 @@ from pydantic import EmailStr
 import uvicorn
 import os
 import time
+import logging
 
 
 from contextlib import asynccontextmanager
@@ -80,6 +82,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="KFUPM Event Registration Form", lifespan=lifespan)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Global exception handler for logging 500 errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Unhandled exception in {request.url}: {exc}", exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 # Configure CORS
 cors_origins_env = os.getenv("CORS_ORIGINS", "*")
 if cors_origins_env.strip() == "*":
@@ -117,29 +128,6 @@ class HowHeard(str, Enum):
     ataa_community = "مجتمع عطاء"
     email = "ايميل"
     other = "أخرى"
-
-class _UserType(str, Enum):
-    student = "student"
-    employee = "employee"
-    employee_son = "employee_son"
-    na = "na"
-
-
-class _AcademicLevel(str, Enum):
-    freshman = "freshman"
-    sophomore = "sophomore"
-    junior = "junior"
-    senior = "senior"
-    graduate = "graduate"
-    na = "na"
-
-
-class _HowHeard(str, Enum):
-    social_media = "social_media"
-    ataa_community = "ataa_community"
-    email = "email"
-    other = "other"
-
 
 class RegistrationForm(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -349,35 +337,43 @@ async def submit_form(
     how_heard: HowHeard = Form(...),
     session: Session = Depends(get_session)
 ):
-    registration = RegistrationForm(
-        first_name=first_name,
-        middle_name=middle_name or None,
-        last_name=last_name,
-        university_id=university_id or None,
-        phone=phone,
-        email=email or None,
-        user_type=user_type,
-        academic_level=academic_level,
-        how_heard=how_heard
-    )
-    session.add(registration)
-    session.commit()
-    session.refresh(registration)
-    return {
-        "message": "تم التسجيل بنجاح",
-        "data": registration
-    }
+    try:
+        registration = RegistrationForm(
+            first_name=first_name,
+            middle_name=middle_name or None,
+            last_name=last_name,
+            university_id=university_id or None,
+            phone=phone,
+            email=email or None,
+            user_type=user_type,
+            academic_level=academic_level,
+            how_heard=how_heard
+        )
+        session.add(registration)
+        session.commit()
+        session.refresh(registration)
+        return {
+            "message": "تم التسجيل بنجاح",
+            "data": registration
+        }
+    except Exception as e:
+        logging.error(f"Error in submit_form: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/registrations", response_model=RegistrationsList)
 async def get_registrations(
     session: Session = Depends(get_session),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    required_key = os.getenv("API_KEY", "changeme")
-    if x_api_key != required_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
-    registrations = session.exec(select(RegistrationForm)).all()
-    return {"registrations": [reg for reg in registrations]}
+    try:
+        required_key = os.getenv("API_KEY", "changeme")
+        if x_api_key != required_key:
+            raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+        registrations = session.exec(select(RegistrationForm)).all()
+        return {"registrations": [reg for reg in registrations]}
+    except Exception as e:
+        logging.error(f"Error in get_registrations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/health", status_code=200)
 async def health():
