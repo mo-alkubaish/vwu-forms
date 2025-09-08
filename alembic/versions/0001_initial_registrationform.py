@@ -38,23 +38,23 @@ def upgrade() -> None:
     academiclevel = pg.ENUM('freshman','sophomore','junior','senior','graduate','na', name='academiclevel', create_type=False)
     howheard = pg.ENUM('social_media','ataa_community','email','other', name='howheard', create_type=False)
 
-    # Create table only if it does not already exist (in case of prior create_all)
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    if "registrationform" not in inspector.get_table_names():
-        op.create_table(
-            "registrationform",
-            sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-            sa.Column("first_name", sa.String(), nullable=False),
-            sa.Column("middle_name", sa.String(), nullable=True),
-            sa.Column("last_name", sa.String(), nullable=False),
-            sa.Column("university_id", sa.String(), nullable=True),
-            sa.Column("phone", sa.String(), nullable=False),
-            sa.Column("email", sa.String(), nullable=True),
-            sa.Column("user_type", usertype, nullable=False),
-            sa.Column("academic_level", academiclevel, nullable=False),
-            sa.Column("how_heard", howheard, nullable=False),
-        )
+    # Create table if it does not already exist
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS registrationform (
+            id SERIAL PRIMARY KEY,
+            first_name VARCHAR NOT NULL,
+            middle_name VARCHAR,
+            last_name VARCHAR NOT NULL,
+            university_id VARCHAR,
+            phone VARCHAR NOT NULL,
+            email VARCHAR,
+            user_type usertype NOT NULL,
+            academic_level academiclevel NOT NULL,
+            how_heard howheard NOT NULL
+        );
+        """
+    )
 
 
 def downgrade() -> None:
