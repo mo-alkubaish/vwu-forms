@@ -118,6 +118,29 @@ class HowHeard(str, Enum):
     email = "ايميل"
     other = "أخرى"
 
+class _UserType(str, Enum):
+    student = "student"
+    employee = "employee"
+    employee_son = "employee_son"
+    na = "na"
+
+
+class _AcademicLevel(str, Enum):
+    freshman = "freshman"
+    sophomore = "sophomore"
+    junior = "junior"
+    senior = "senior"
+    graduate = "graduate"
+    na = "na"
+
+
+class _HowHeard(str, Enum):
+    social_media = "social_media"
+    ataa_community = "ataa_community"
+    email = "email"
+    other = "other"
+
+
 class RegistrationForm(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     first_name: str = Field(min_length=2)
@@ -139,9 +162,9 @@ class RegistrationRead(SQLModel):
     university_id: Optional[str] = None
     phone: str
     email: Optional[EmailStr] = None
-    user_type: UserType
-    academic_level: AcademicLevel
-    how_heard: HowHeard
+    user_type: str
+    academic_level: str
+    how_heard: str
 
 class RegistrationResponse(SQLModel):
     message: str
