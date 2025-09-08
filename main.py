@@ -13,12 +13,66 @@ import time
 
 
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+def run_alembic_migrations(database_url: str) -> bool:
+    """Run Alembic migrations to 'head' if a migration setup exists.
+
+    Returns True if migrations were found and executed (or there were none to
+    apply). Returns False if no Alembic setup is present in the project.
+    Raises an exception if a migration run is attempted but fails.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+    except Exception:
+        # Alembic not installed/available
+        return False
+
+    # Allow disabling migrations explicitly
+    if os.getenv("SKIP_MIGRATIONS", "").lower() in {"1", "true", "yes"}:
+        return False
+
+    # Detect Alembic layout
+    cwd = Path(__file__).resolve().parent
+    ini_path = cwd / "alembic.ini"
+    migrations_dir = Path(os.getenv("ALEMBIC_SCRIPT_LOCATION", cwd / "alembic"))
+
+    has_ini = ini_path.is_file()
+    has_dir = migrations_dir.is_dir()
+    if not has_ini and not has_dir:
+        return False
+
+    cfg = Config(str(ini_path)) if has_ini else Config()
+    # Always ensure these main options are set from our runtime env
+    cfg.set_main_option("sqlalchemy.url", database_url)
+    cfg.set_main_option("script_location", str(migrations_dir))
+
+    # Optional: make autogenerate comparisons more accurate if env.py respects these
+    cfg.set_main_option("compare_type", "true")
+    cfg.set_main_option("compare_server_default", "true")
+
+    # Run upgrade
+    command.upgrade(cfg, "head")
+    print("Applied Alembic migrations to head.")
+    return True
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         wait_for_database(DATABASE_URL)
-        SQLModel.metadata.create_all(engine)
+        # If Alembic migrations are available, run them; otherwise fall back to create_all
+        ran_migrations = False
+        try:
+            ran_migrations = run_alembic_migrations(DATABASE_URL)
+        except Exception as mig_err:
+            # If a migration setup exists but fails, surface the error clearly
+            print(f"ERROR: Alembic migrations failed: {mig_err}")
+            raise
+
+        if not ran_migrations:
+            SQLModel.metadata.create_all(engine)
+            print("No Alembic setup detected; created tables via metadata.")
     except Exception as e:
         print(f"ERROR: Database initialization failed. Details: {e}")
         raise
