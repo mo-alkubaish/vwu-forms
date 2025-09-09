@@ -129,11 +129,22 @@ class HowHeard(str, Enum):
     email = "ايميل"
     other = "أخرى"
 
+class IASCourses(str, Enum):
+    IAS_111 = "IAS 111"
+    IAS_121 = "IAS 121"
+    IAS_131 = "IAS 131"
+    IAS_212 = "IAS 212"
+    IAS_321 = "IAS 321"
+    IAS_322 = "IAS 322"
+    IAS_330 = "IAS 330"
+    IAS_430 = "IAS 430"
+
 class RegistrationForm(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     first_name: str = Field(min_length=2)
     middle_name: Optional[str] = Field(default=None, min_length=2)
     last_name: str = Field(min_length=2)
+    ias_course: Optional[IASCourses] = Field(default=None)
     university_id: Optional[str] = Field(None, description="الرقم الجامعي (اختياري)")
     phone: str = Field(min_length=10, description="رقم الجوال")
     email: Optional[EmailStr] = Field(default=None, description="البريد الإلكتروني")
@@ -153,6 +164,7 @@ class RegistrationRead(SQLModel):
     user_type: str
     academic_level: str
     how_heard: str
+    ias_course: Optional[str] = None
 
 class RegistrationResponse(SQLModel):
     message: str
@@ -335,6 +347,7 @@ async def submit_form(
     user_type: UserType = Form(...),
     academic_level: AcademicLevel = Form(...),
     how_heard: HowHeard = Form(...),
+    ias_course: Optional[IASCourses] = Form(None),
     session: Session = Depends(get_session)
 ):
     try:
@@ -347,7 +360,8 @@ async def submit_form(
             email=email or None,
             user_type=user_type,
             academic_level=academic_level,
-            how_heard=how_heard
+            how_heard=how_heard,
+            ias_course=ias_course or None
         )
         session.add(registration)
         session.commit()
