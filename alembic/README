@@ -1,8 +1,1 @@
-This directory contains Alembic migration environment for the project.
-
-Migrations are applied automatically at app startup if present. You can also
-use Alembic CLI locally:
-
-  - Set DATABASE_URL
-  - alembic upgrade head
-
+Generic single-database configuration.

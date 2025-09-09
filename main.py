@@ -140,6 +140,10 @@ class IASCourses(str, Enum):
     IAS_330 = "IAS 330"
     IAS_430 = "IAS 430"
 
+class Gender(str, Enum):
+    male = "ذكر"
+    female = "أنثى"
+
 class RegistrationForm(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     first_name: str = Field(min_length=2)
@@ -152,6 +156,7 @@ class RegistrationForm(SQLModel, table=True):
     user_type: UserType = Field(description="طالب أو موظف")
     academic_level: AcademicLevel = Field(description="المرحلة الدراسية")
     how_heard: HowHeard = Field(description="كيف سمع عن الملتقى")
+    gender: Gender = Field(description="الجنس")
 
 # ---------- API Schemas (Request/Response) ----------
 class RegistrationRead(SQLModel):
@@ -166,6 +171,7 @@ class RegistrationRead(SQLModel):
     academic_level: str
     how_heard: str
     ias_course: Optional[str] = None
+    gender: str
 
 class RegistrationResponse(SQLModel):
     message: str
@@ -349,6 +355,7 @@ async def submit_form(
     academic_level: AcademicLevel = Form(...),
     how_heard: HowHeard = Form(...),
     ias_course: Optional[IASCourses] = Form(None),
+    gender: Gender = Form(...),
     session: Session = Depends(get_session)
 ):
     try:
@@ -362,7 +369,8 @@ async def submit_form(
             user_type=user_type,
             academic_level=academic_level,
             how_heard=how_heard,
-            ias_course=ias_course or None
+            ias_course=ias_course or None,
+            gender=gender
         )
         session.add(registration)
         session.commit()
