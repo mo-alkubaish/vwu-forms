@@ -116,6 +116,7 @@ class UserType(str, Enum):
 
 
 class AcademicLevel(str, Enum):
+    orientation = "السنة التحضيرية"
     freshman = "السنة الأولى"
     sophomore = "السنة الثانية"
     junior = "السنة الثالثة"
